@@ -1106,15 +1106,6 @@ class App:
         )
         self.fclm_status_label.pack(side="right", padx=(0, 10))
 
-        version_label = tk.Label(
-            banner_frame,
-            text=f"v{APP_VERSION}",
-            bg="#222222",
-            fg="#cccccc",
-            font=("Segoe UI", 10, "bold")
-        )
-        version_label.pack(side="right", padx=10)
-
         # Main area
         main_frame = tk.Frame(self.root, bg="#1a1a1a")
         main_frame.pack(fill="both", expand=True)
@@ -1123,30 +1114,20 @@ class App:
         nav = tk.Frame(main_frame, bg="#111111", width=200)
         nav.pack(side="left", fill="y")
 
-        self._add_nav_button(nav, "Home", lambda: None)
-
-        # FCLM section header
-        fclm_header = tk.Label(nav, text="--- FCLM ---", bg="#111111", fg="#ff9900",
-                               font=("Segoe UI", 9, "bold"))
-        fclm_header.pack(fill="x", pady=(8, 2), padx=8)
         self._add_nav_button(nav, "FCLM Lookup", self.fclm_lookup_badge)
         self._add_nav_button(nav, "FCLM Sync Paths", self.fclm_sync_paths)
         self._add_nav_button(nav, "FCLM Dashboard", self.fclm_open_dashboard)
         self._add_nav_button(nav, "FCLM Settings", self.fclm_open_settings)
 
-        # Manual section header
-        manual_header = tk.Label(nav, text="--- Manual ---", bg="#111111", fg="#888888",
-                                 font=("Segoe UI", 9, "bold"))
-        manual_header.pack(fill="x", pady=(8, 2), padx=8)
+        ttk.Separator(nav, orient="horizontal").pack(fill="x", pady=8, padx=8)
+
         self._add_nav_button(nav, "Start Direct", self.start_direct)
         self._add_nav_button(nav, "Start Indirect", self.start_indirect)
         self._add_nav_button(nav, "End Current", self.end_current)
         self._add_nav_button(nav, "Dashboard", self.open_dashboard)
 
-        # Tools section
-        tools_header = tk.Label(nav, text="--- Tools ---", bg="#111111", fg="#888888",
-                                font=("Segoe UI", 9, "bold"))
-        tools_header.pack(fill="x", pady=(8, 2), padx=8)
+        ttk.Separator(nav, orient="horizontal").pack(fill="x", pady=8, padx=8)
+
         self._add_nav_button(nav, "Export to CSV", self.export_to_excel)
         self._add_nav_button(nav, "Shift Report", self.export_shift_report)
         self._add_nav_button(nav, "Legend", self.open_legend)
@@ -1203,10 +1184,6 @@ class App:
                                width=18, state="readonly")
         role_cb.grid(row=1, column=3, sticky="w", pady=(8, 0))
 
-        load_btn = ttk.Button(top, text="Load Associate", style="DarkNav.TButton",
-                              command=self.load_associate)
-        load_btn.grid(row=0, column=4, padx=(10, 0))
-
         # Session table
         mid = tk.Frame(content, bg="#1a1a1a")
         mid.pack(fill="both", expand=True)
@@ -1237,18 +1214,6 @@ class App:
                                      bg="#1a1a1a", fg="#00cc66",
                                      font=("Segoe UI", 10, "bold"))
         self.status_label.grid(row=0, column=3, sticky="w", padx=(5, 0))
-
-        db_label = tk.Label(
-            bottom,
-            text=f"DB: {DB_FILE}",
-            bg="#1a1a1a",
-            fg="#777777",
-            font=("Segoe UI", 8),
-            anchor="w",
-            justify="left",
-            wraplength=600
-        )
-        db_label.grid(row=1, column=0, columnspan=4, sticky="w", pady=(5, 0))
 
         # Update FCLM status indicator
         self._update_fclm_status_label()
@@ -1345,22 +1310,6 @@ class App:
         badge = self.badge_var.get().strip()
         if not badge:
             return
-        # If FCLM is connected, do FCLM lookup instead of just local
-        if self.fclm.is_connected():
-            self._fclm_lookup_employee(badge)
-            return
-
-        assoc_id = get_or_create_associate(badge, self.name_var.get().strip() or None)
-        self.current_associate_id = assoc_id
-        self.refresh_view()
-        self._update_direct_indirect_status(assoc_id)
-
-    def load_associate(self):
-        badge = self.badge_var.get().strip()
-        if not badge:
-            messagebox.showerror("Error", "Enter a badge ID.")
-            return
-        # If FCLM is connected, do FCLM lookup
         if self.fclm.is_connected():
             self._fclm_lookup_employee(badge)
             return
@@ -1483,43 +1432,45 @@ class App:
         if not file_path:
             return
 
-        # If we have FCLM path data, export that; otherwise local
         if self._fclm_path_aas:
-            self._export_fclm_csv(file_path)
+            header = ["Path", "Name", "Badge ID", "Hours", "Status"]
+            rows = self._iter_fclm_rows()
+            kind = "FCLM path"
         else:
-            self._export_local_csv(file_path)
+            header = ["Name", "Badge ID", "Indirect Hours Today", "Indirect Roles", "Status"]
+            rows = self._iter_local_rows()
+            kind = "Local"
+        self._write_csv(file_path, header, rows)
+        messagebox.showinfo("Export", f"{kind} data exported successfully.")
 
-    def _export_local_csv(self, file_path):
-        associates = get_all_associates()
+    def _write_csv(self, file_path, header, rows):
         with open(file_path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow(["Name", "Badge ID", "Indirect Hours Today", "Indirect Roles", "Status"])
-            for assoc_id, name, badge in associates:
-                hours = compute_indirect_hours_today(assoc_id)
-                status = self.get_status_text(hours)
-                roles = self.get_indirect_roles_today(assoc_id)
-                roles_text = ", ".join(sorted(roles)) if roles else "None"
-                writer.writerow([name, badge, f"{hours:.2f}", roles_text, status])
-        messagebox.showinfo("Export", "Local data exported successfully.")
+            writer.writerow(header)
+            for row in rows:
+                writer.writerow(row)
 
-    def _export_fclm_csv(self, file_path):
-        with open(file_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(["Path", "Name", "Badge ID", "Hours", "Status"])
-            for path in FCLM_RESTRICTED_PATHS:
-                aas = self._fclm_path_aas.get(path, [])
-                short = FCLM_PATH_SHORT_NAMES.get(path, path)
-                for aa in aas:
-                    hrs = aa["hours"]
-                    mins = hrs * 60
-                    if mins >= MPV_MAX_TIME_MINUTES:
-                        status = "VIOLATION"
-                    elif mins >= MPV_MAX_TIME_MINUTES - 60:
-                        status = "Near limit"
-                    else:
-                        status = "OK"
-                    writer.writerow([short, aa["name"], aa["badge_id"], f"{hrs:.2f}", status])
-        messagebox.showinfo("Export", "FCLM path data exported successfully.")
+    def _iter_local_rows(self):
+        for assoc_id, name, badge in get_all_associates():
+            hours = compute_indirect_hours_today(assoc_id)
+            status = self.get_status_text(hours)
+            roles = self.get_indirect_roles_today(assoc_id)
+            roles_text = ", ".join(sorted(roles)) if roles else "None"
+            yield [name, badge, f"{hours:.2f}", roles_text, status]
+
+    def _iter_fclm_rows(self):
+        for path in FCLM_RESTRICTED_PATHS:
+            short = FCLM_PATH_SHORT_NAMES.get(path, path)
+            for aa in self._fclm_path_aas.get(path, []):
+                hrs = aa["hours"]
+                mins = hrs * 60
+                if mins >= MPV_MAX_TIME_MINUTES:
+                    status = "VIOLATION"
+                elif mins >= MPV_MAX_TIME_MINUTES - 60:
+                    status = "Near limit"
+                else:
+                    status = "OK"
+                yield [short, aa["name"], aa["badge_id"], f"{hrs:.2f}", status]
 
     def export_shift_report(self):
         file_path = filedialog.asksaveasfilename(
@@ -1634,155 +1585,82 @@ class App:
         win = tk.Toplevel(self.root)
         win.title("FCLM Settings")
         win.configure(bg="#1a1a1a")
-        win.geometry("550x560")
+        win.geometry("520x420")
         win.resizable(False, False)
 
-        tk.Label(win, text="FCLM Connection Settings", bg="#1a1a1a", fg="#ff9900",
-                 font=("Segoe UI", 14, "bold")).pack(pady=(15, 5))
+        tk.Label(win, text="FCLM Connection", bg="#1a1a1a", fg="#ff9900",
+                 font=("Segoe UI", 14, "bold")).pack(pady=(15, 4))
+        tk.Label(win,
+                 text="Log into fclm-portal.amazon.com, then click Connect.\n"
+                      "If auto-detect fails, paste a cookie below.",
+                 bg="#1a1a1a", fg="#cccccc", font=("Segoe UI", 9),
+                 justify="center").pack(pady=(0, 10))
 
-        # --- Auto-detect section (primary) ---
-        auto_frame = tk.Frame(win, bg="#222222", highlightbackground="#ff9900",
-                              highlightthickness=1)
-        auto_frame.pack(fill="x", padx=20, pady=(10, 5))
-
-        tk.Label(auto_frame, text="Automatic Setup", bg="#222222", fg="#ff9900",
-                 font=("Segoe UI", 12, "bold")).pack(pady=(10, 2))
-        tk.Label(auto_frame,
-                 text="Log into fclm-portal.amazon.com in your browser,\n"
-                      "then click the button below.",
-                 bg="#222222", fg="#cccccc", font=("Segoe UI", 10),
-                 justify="center").pack(pady=(0, 8))
-
-        # Status
-        status_var = tk.StringVar(value="")
-        status_label = tk.Label(win, textvariable=status_var, bg="#1a1a1a",
-                                fg="#aaaaaa", font=("Segoe UI", 10),
-                                wraplength=500, justify="left")
-        status_label.pack(pady=5)
-
-        # Warehouse ID
         wh_frame = tk.Frame(win, bg="#1a1a1a")
         wh_frame.pack(fill="x", padx=20, pady=5)
         tk.Label(wh_frame, text="Warehouse ID:", bg="#1a1a1a", fg="#e6e6e6",
                  font=("Segoe UI", 10)).pack(side="left")
         wh_var = tk.StringVar(value=self.config.get("fclm_warehouse_id", "IND8"))
-        wh_entry = tk.Entry(wh_frame, textvariable=wh_var, width=10,
-                            bg="#333333", fg="#e6e6e6", insertbackground="white", relief="flat")
-        wh_entry.pack(side="left", padx=(10, 0))
+        tk.Entry(wh_frame, textvariable=wh_var, width=10,
+                 bg="#333333", fg="#e6e6e6", insertbackground="white",
+                 relief="flat").pack(side="left", padx=(10, 0))
 
-        def grab_from_browser():
-            status_var.set("Searching for FCLM cookies in your browser...")
-            status_label.config(fg="#aaaaaa")
-            win.update()
-
-            cookie, info = BrowserCookieReader.auto_detect()
-            if cookie:
-                # Fill the cookie field and auto-save
-                cookie_text.delete("1.0", "end")
-                cookie_text.insert("1.0", cookie)
-                wh = wh_var.get().strip() or "IND8"
-                self.config["fclm_cookie"] = cookie
-                self.config["fclm_warehouse_id"] = wh
-                save_config(self.config)
-                self.fclm = FclmClient(cookie=cookie, warehouse_id=wh,
-                                       on_cookie_refreshed=self._on_cookie_refreshed)
-                self._update_fclm_status_label()
-
-                # Test the connection
-                status_var.set(f"Found cookies from {info}. Testing connection...")
-                status_label.config(fg="#aaaaaa")
-                win.update()
-                ok, msg = self.fclm.test_connection()
-                if ok:
-                    status_var.set(f"Connected via {info}!")
-                    status_label.config(fg="#2ecc71")
-                else:
-                    status_var.set(
-                        f"Cookies found in {info} but connection failed:\n{msg}\n\n"
-                        "Try logging into FCLM in your browser and clicking again."
-                    )
-                    status_label.config(fg="#e74c3c")
-            else:
-                # info contains the error message
-                status_var.set(
-                    f"{info}\n\n"
-                    "Make sure you are logged into fclm-portal.amazon.com\n"
-                    "in Edge, Chrome, or Firefox, then try again."
-                )
-                status_label.config(fg="#e74c3c")
-
-        grab_btn = tk.Button(auto_frame, text="Grab Cookies from Browser",
-                             bg="#ff9900", fg="#1a1a1a",
-                             font=("Segoe UI", 12, "bold"), relief="flat",
-                             padx=20, pady=8, cursor="hand2",
-                             command=grab_from_browser)
-        grab_btn.pack(pady=(0, 12))
-
-        # --- Manual paste section (secondary / fallback) ---
-        tk.Label(win, text="Or paste cookie manually:", bg="#1a1a1a", fg="#888888",
-                 font=("Segoe UI", 9)).pack(anchor="w", padx=20, pady=(10, 2))
-        cookie_text = tk.Text(win, height=4, bg="#333333", fg="#e6e6e6",
+        tk.Label(win, text="Cookie (optional — leave blank to auto-detect):",
+                 bg="#1a1a1a", fg="#888888", font=("Segoe UI", 9)
+                 ).pack(anchor="w", padx=20, pady=(10, 2))
+        cookie_text = tk.Text(win, height=5, bg="#333333", fg="#e6e6e6",
                               insertbackground="white", relief="flat",
                               font=("Consolas", 9), wrap="word")
         cookie_text.pack(fill="x", padx=20)
         cookie_text.insert("1.0", self.config.get("fclm_cookie", ""))
 
-        # Buttons
-        btn_frame = tk.Frame(win, bg="#1a1a1a")
-        btn_frame.pack(pady=10)
+        status_var = tk.StringVar(value="")
+        status_label = tk.Label(win, textvariable=status_var, bg="#1a1a1a",
+                                fg="#aaaaaa", font=("Segoe UI", 10),
+                                wraplength=480, justify="left")
+        status_label.pack(pady=8, padx=20, fill="x")
 
-        def test_connection():
-            cookie = cookie_text.get("1.0", "end").strip()
-            wh = wh_var.get().strip()
-            if not cookie:
-                status_var.set("Enter a cookie first.")
-                status_label.config(fg="#e74c3c")
-                return
-            status_var.set("Testing connection...")
-            status_label.config(fg="#aaaaaa")
+        def _set_status(msg, ok=None):
+            status_var.set(msg)
+            status_label.config(fg="#2ecc71" if ok else ("#e74c3c" if ok is False else "#aaaaaa"))
             win.update()
 
-            client = FclmClient(cookie=cookie, warehouse_id=wh)
-            ok, msg = client.test_connection()
-            status_var.set(msg)
-            status_label.config(fg="#2ecc71" if ok else "#e74c3c")
+        def connect():
+            pasted = cookie_text.get("1.0", "end").strip()
+            source = "pasted cookie"
+            cookie = pasted
+            if not cookie:
+                _set_status("Searching for FCLM cookies in your browser...")
+                cookie, info = BrowserCookieReader.auto_detect()
+                if not cookie:
+                    _set_status(
+                        f"{info}\n\nLog into fclm-portal.amazon.com in Edge/Chrome/Firefox, "
+                        "or paste a cookie above.", ok=False)
+                    return
+                source = info
+                cookie_text.delete("1.0", "end")
+                cookie_text.insert("1.0", cookie)
 
-        def save_settings():
-            cookie = cookie_text.get("1.0", "end").strip()
             wh = wh_var.get().strip() or "IND8"
+            _set_status(f"Testing connection ({source})...")
+            client = FclmClient(cookie=cookie, warehouse_id=wh,
+                                on_cookie_refreshed=self._on_cookie_refreshed)
+            ok, msg = client.test_connection()
+            if not ok:
+                _set_status(f"Connection failed: {msg}", ok=False)
+                return
+
             self.config["fclm_cookie"] = cookie
             self.config["fclm_warehouse_id"] = wh
             save_config(self.config)
-            self.fclm = FclmClient(cookie=cookie, warehouse_id=wh,
-                                   on_cookie_refreshed=self._on_cookie_refreshed)
+            self.fclm = client
             self._update_fclm_status_label()
-            status_var.set("Settings saved!")
-            status_label.config(fg="#2ecc71")
+            _set_status(f"Connected via {source}.", ok=True)
 
-        def clear_cookie():
-            cookie_text.delete("1.0", "end")
-            self.config["fclm_cookie"] = ""
-            save_config(self.config)
-            self.fclm = FclmClient(cookie="", warehouse_id=wh_var.get().strip() or "IND8",
-                                   on_cookie_refreshed=self._on_cookie_refreshed)
-            self._update_fclm_status_label()
-            status_var.set("Cookie cleared.")
-            status_label.config(fg="#aaaaaa")
-
-        test_btn = tk.Button(btn_frame, text="Test Connection", bg="#3498db", fg="white",
-                             font=("Segoe UI", 10, "bold"), relief="flat", padx=12, pady=4,
-                             command=test_connection)
-        test_btn.pack(side="left", padx=5)
-
-        save_btn = tk.Button(btn_frame, text="Save", bg="#27ae60", fg="white",
-                             font=("Segoe UI", 10, "bold"), relief="flat", padx=12, pady=4,
-                             command=save_settings)
-        save_btn.pack(side="left", padx=5)
-
-        clear_btn = tk.Button(btn_frame, text="Clear", bg="#e74c3c", fg="white",
-                              font=("Segoe UI", 10, "bold"), relief="flat", padx=12, pady=4,
-                              command=clear_cookie)
-        clear_btn.pack(side="left", padx=5)
+        tk.Button(win, text="Connect", bg="#ff9900", fg="#1a1a1a",
+                  font=("Segoe UI", 12, "bold"), relief="flat",
+                  padx=24, pady=8, cursor="hand2",
+                  command=connect).pack(pady=12)
 
     # ---------- FCLM BADGE LOOKUP ----------
 
@@ -1998,117 +1876,113 @@ class App:
             return
 
         dash = tk.Toplevel(self.root)
-        dash.title("FCLM Dashboard - Restricted Path Associates")
+        dash.title("FCLM Dashboard")
         dash.configure(bg="#1a1a1a")
         dash.geometry("900x600")
 
-        # Title
-        tk.Label(dash, text="Restricted Path Associates (from FCLM)", bg="#1a1a1a",
-                 fg="#ff9900", font=("Segoe UI", 14, "bold")).pack(pady=(10, 5))
+        header = tk.Frame(dash, bg="#1a1a1a")
+        header.pack(fill="x", padx=10, pady=(10, 5))
 
-        # Timestamp
-        tk.Label(dash, text=f"Synced: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                 bg="#1a1a1a", fg="#888888", font=("Segoe UI", 9)).pack()
+        tk.Label(header, text="Restricted Path Associates", bg="#1a1a1a",
+                 fg="#ff9900", font=("Segoe UI", 14, "bold")).pack(side="left")
+        tk.Label(header, text=f"Synced {datetime.datetime.now().strftime('%H:%M:%S')}",
+                 bg="#1a1a1a", fg="#888888", font=("Segoe UI", 9)).pack(side="right")
 
-        # Create notebook with tabs for each path
-        notebook = ttk.Notebook(dash)
-        notebook.pack(fill="both", expand=True, padx=10, pady=10)
+        # Filter row: path dropdown + status filter
+        filter_row = tk.Frame(dash, bg="#1a1a1a")
+        filter_row.pack(fill="x", padx=10, pady=(0, 8))
 
-        # Summary tab
-        summary_frame = tk.Frame(notebook, bg="#1a1a1a")
-        notebook.add(summary_frame, text="Summary")
-
-        summary_cols = ("path", "count", "over_limit")
-        summary_tree = ttk.Treeview(summary_frame, columns=summary_cols, show="headings",
-                                    style="Dark.Treeview")
-        summary_tree.heading("path", text="Restricted Path", anchor="w")
-        summary_tree.heading("count", text="Associates", anchor="w")
-        summary_tree.heading("over_limit", text="Over 4.5h Limit", anchor="w")
-        summary_tree.column("path", width=250)
-        summary_tree.column("count", width=100)
-        summary_tree.column("over_limit", width=150)
-        summary_tree.pack(fill="both", expand=True, padx=5, pady=5)
-
+        path_options = ["All paths"]
+        path_lookup = {}
         for path in FCLM_RESTRICTED_PATHS:
             aas = self._fclm_path_aas.get(path, [])
             if not aas:
                 continue
             short = FCLM_PATH_SHORT_NAMES.get(path, path)
-            over = sum(1 for a in aas if a["minutes"] >= MPV_MAX_TIME_MINUTES)
-            tag = "violation" if over > 0 else "ok"
-            summary_tree.insert("", "end", values=(short, len(aas), over), tags=(tag,))
+            label = f"{short} ({len(aas)})"
+            path_options.append(label)
+            path_lookup[label] = path
 
-        summary_tree.tag_configure("violation", background="#661111")
-        summary_tree.tag_configure("ok", background="#222222")
+        tk.Label(filter_row, text="Path:", bg="#1a1a1a", fg="#e6e6e6",
+                 font=("Segoe UI", 10)).pack(side="left")
+        path_var = tk.StringVar(value="All paths")
+        path_cb = ttk.Combobox(filter_row, textvariable=path_var, values=path_options,
+                               state="readonly", width=30)
+        path_cb.pack(side="left", padx=(5, 15))
 
-        # Per-path tabs
-        for path in FCLM_RESTRICTED_PATHS:
-            aas = self._fclm_path_aas.get(path, [])
-            if not aas:
-                continue
+        tk.Label(filter_row, text="Status:", bg="#1a1a1a", fg="#e6e6e6",
+                 font=("Segoe UI", 10)).pack(side="left")
+        status_var = tk.StringVar(value="All")
+        status_cb = ttk.Combobox(filter_row, textvariable=status_var,
+                                 values=["All", "Over limit", "Near limit", "OK"],
+                                 state="readonly", width=14)
+        status_cb.pack(side="left", padx=5)
 
-            short = FCLM_PATH_SHORT_NAMES.get(path, path)
-            frame = tk.Frame(notebook, bg="#1a1a1a")
-            notebook.add(frame, text=f"{short} ({len(aas)})")
+        # Single table for all rows
+        cols = ("path", "name", "badge", "hours", "status")
+        tree = ttk.Treeview(dash, columns=cols, show="headings",
+                            style="Dark.Treeview")
+        tree.heading("path", text="Path", anchor="w")
+        tree.heading("name", text="Name", anchor="w")
+        tree.heading("badge", text="Badge ID", anchor="w")
+        tree.heading("hours", text="Hours", anchor="w")
+        tree.heading("status", text="Status", anchor="w")
+        tree.column("path", width=140)
+        tree.column("name", width=220)
+        tree.column("badge", width=120)
+        tree.column("hours", width=80)
+        tree.column("status", width=160)
+        tree.pack(fill="both", expand=True, padx=10, pady=5)
+        tree.tag_configure("violation", background="#661111")
+        tree.tag_configure("warning", background="#665511")
+        tree.tag_configure("ok", background="#222222")
 
-            cols = ("name", "badge", "hours", "status")
-            tree = ttk.Treeview(frame, columns=cols, show="headings",
-                                style="Dark.Treeview")
-            tree.heading("name", text="Name", anchor="w")
-            tree.heading("badge", text="Badge ID", anchor="w")
-            tree.heading("hours", text="Hours", anchor="w")
-            tree.heading("status", text="Status", anchor="w")
-            tree.column("name", width=200)
-            tree.column("badge", width=120)
-            tree.column("hours", width=100)
-            tree.column("status", width=150)
-            tree.pack(fill="both", expand=True, padx=5, pady=5)
+        def _classify(mins):
+            if mins >= MPV_MAX_TIME_MINUTES:
+                return "OVER LIMIT", "violation", "Over limit"
+            remaining = MPV_MAX_TIME_MINUTES - mins
+            if mins >= MPV_MAX_TIME_MINUTES - 60:
+                return f"{_fmt_mins(remaining)} remaining", "warning", "Near limit"
+            return f"{_fmt_mins(remaining)} remaining", "ok", "OK"
 
-            for aa in aas:
-                hrs = aa["hours"]
-                mins = aa["minutes"]
-                if mins >= MPV_MAX_TIME_MINUTES:
-                    status = "OVER LIMIT"
-                    tag = "violation"
-                elif mins >= MPV_MAX_TIME_MINUTES - 60:
-                    remaining = MPV_MAX_TIME_MINUTES - mins
-                    status = f"{_fmt_mins(remaining)} remaining"
-                    tag = "warning"
-                else:
-                    remaining = MPV_MAX_TIME_MINUTES - mins
-                    status = f"{_fmt_mins(remaining)} remaining"
-                    tag = "ok"
+        def _populate(*_):
+            tree.delete(*tree.get_children())
+            chosen = path_var.get()
+            status_pick = status_var.get()
+            if chosen == "All paths":
+                paths = [p for p in FCLM_RESTRICTED_PATHS if self._fclm_path_aas.get(p)]
+            else:
+                paths = [path_lookup[chosen]]
+            for path in paths:
+                short = FCLM_PATH_SHORT_NAMES.get(path, path)
+                for aa in self._fclm_path_aas.get(path, []):
+                    status_text, tag, status_key = _classify(aa["minutes"])
+                    if status_pick != "All" and status_pick != status_key:
+                        continue
+                    tree.insert("", "end", values=(
+                        short, aa["name"], aa["badge_id"],
+                        f"{aa['hours']:.2f}", status_text
+                    ), tags=(tag,))
 
-                tree.insert("", "end", values=(
-                    aa["name"], aa["badge_id"], f"{hrs:.2f}", status
-                ), tags=(tag,))
+        path_cb.bind("<<ComboboxSelected>>", _populate)
+        status_cb.bind("<<ComboboxSelected>>", _populate)
+        _populate()
 
-            tree.tag_configure("violation", background="#661111")
-            tree.tag_configure("warning", background="#665511")
-            tree.tag_configure("ok", background="#222222")
+        def _on_double_click(event):
+            sel = tree.selection()
+            if sel:
+                vals = tree.item(sel[0], "values")
+                if vals and len(vals) >= 3:
+                    self.badge_var.set(vals[2])
+                    self._fclm_lookup_employee(vals[2])
+        tree.bind("<Double-1>", _on_double_click)
 
-            # Lookup on double-click
-            def _on_double_click(event, t=tree):
-                sel = t.selection()
-                if sel:
-                    vals = t.item(sel[0], "values")
-                    if vals and len(vals) >= 2:
-                        self.badge_var.set(vals[1])  # badge ID
-                        self._fclm_lookup_employee(vals[1])
-
-            tree.bind("<Double-1>", _on_double_click)
-
-        # Refresh button
         btn_frame = tk.Frame(dash, bg="#1a1a1a")
         btn_frame.pack(pady=(0, 10))
 
         def _refresh():
             dash.destroy()
             self.fclm_sync_paths()
-
-        tk.Button(btn_frame, text="Refresh from FCLM", bg="#3498db", fg="white",
-                  font=("Segoe UI", 10, "bold"), relief="flat", padx=12, pady=4,
-                  command=_refresh).pack(side="left", padx=5)
 
         def _export():
             fp = filedialog.asksaveasfilename(
@@ -2117,8 +1991,13 @@ class App:
                 title="Export FCLM path data"
             )
             if fp:
-                self._export_fclm_csv(fp)
+                self._write_csv(fp,
+                                ["Path", "Name", "Badge ID", "Hours", "Status"],
+                                self._iter_fclm_rows())
 
+        tk.Button(btn_frame, text="Refresh from FCLM", bg="#3498db", fg="white",
+                  font=("Segoe UI", 10, "bold"), relief="flat", padx=12, pady=4,
+                  command=_refresh).pack(side="left", padx=5)
         tk.Button(btn_frame, text="Export to CSV", bg="#27ae60", fg="white",
                   font=("Segoe UI", 10, "bold"), relief="flat", padx=12, pady=4,
                   command=_export).pack(side="left", padx=5)
