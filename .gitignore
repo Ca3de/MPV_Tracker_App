@@ -1,1 +1,15 @@
 __pycache__/
+*.pyc
+
+# PyInstaller build artifacts
+/build/
+/dist/
+
+# Local databases (user data)
+*.db
+
+# Local app config (may contain secrets like FCLM cookies)
+ind8_config.json
+
+# Debug screenshots
+Copilot_*.png
